@@ -1,15 +1,15 @@
 /**
  * Service worker — PWA çevrimdışı kabuk.
  *
- * Strateji: çalışma anı önbelleği (runtime cache). Site bir kez çevrimiçi
- * açıldığında dokunulan her dosya (HTML, JS, model, ikon) önbelleğe alınır;
- * sonraki açılışlarda önce önbellekten sunulur (cache-first), yoksa ağa gidilir.
- * Model verisi zaten IndexedDB'de olduğundan gözlük tamamen çevrimdışı çalışır.
+ * Strateji:
+ * - Sayfa gezinmeleri (index.html): ÖNCE AĞ, çevrimdışıysa önbellek.
+ *   Böylece site güncellemeleri hemen görünür; internet yokken eski kabuk açılır.
+ * - Diğer dosyalar (JS/ikon/model): önce önbellek (dosya adları içerik damgalı,
+ *   değişince adı da değişir — bayat kalma riski yok).
  */
-const CACHE_NAME = "archvr-v1";
+const CACHE_NAME = "archvr-v2";
 
 self.addEventListener("install", (event) => {
-  // Kabuğun çekirdeğini baştan önbelleğe al
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(["./", "./manifest.webmanifest"]))
   );
@@ -28,9 +28,24 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  // Yalnızca aynı kaynaktan GET istekleri önbelleklenir
+  // Yalnızca aynı kaynaktan GET istekleri
   if (request.method !== "GET" || !request.url.startsWith(self.location.origin)) return;
 
+  // Sayfa gezinmesi: ağ öncelikli (güncelleme gelsin), çevrimdışıysa önbellek
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(async () => (await caches.match(request)) ?? (await caches.match("./")))
+    );
+    return;
+  }
+
+  // Statik varlıklar: önbellek öncelikli
   event.respondWith(
     caches.match(request).then(
       (cached) =>

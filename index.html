@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#141820" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon-192.png" />
+  <title>ArchVR Gezinti</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
+    #app { position: fixed; inset: 0; background: #dfe8f0; }
+    #overlay {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      background: rgba(20, 24, 32, 0.94); color: #f0f2f5;
+      padding: 24px 28px; border-radius: 18px; text-align: center;
+      width: min(520px, 94vw); max-height: 90vh; overflow-y: auto;
+    }
+    #overlay.hidden { display: none; }
+    h1 { font-size: 1.3rem; margin-bottom: 4px; }
+    .sub { font-size: 0.8rem; opacity: 0.6; margin-bottom: 16px; }
+    #project-list { list-style: none; text-align: left; margin: 12px 0; }
+    #project-list li {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 6px; border-bottom: 1px solid #2a303c;
+    }
+    #project-list .p-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button {
+      font: inherit; color: white; border: none; border-radius: 8px;
+      padding: 8px 16px; cursor: pointer; background: #39404d;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.2); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.primary { background: #4c7dff; font-weight: 600; }
+    button.danger { background: #7a3333; }
+    .file-label {
+      display: inline-block; background: #39404d; border-radius: 8px;
+      padding: 8px 16px; cursor: pointer; margin: 6px 0;
+    }
+    .file-label:hover { filter: brightness(1.2); }
+    #file-picker { display: none; }
+    #status { font-size: 0.85rem; opacity: 0.85; margin: 12px 0; min-height: 2.4em; }
+    #enter-vr { font-size: 1.05rem; padding: 12px 32px; }
+    #loaded-name { font-weight: 600; }
+    #version { font-size: 0.7rem; opacity: 0.5; margin-top: 12px; }
+  </style>
+  <script type="module" crossorigin src="./assets/index-CvQv-Z07.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="overlay">
+    <h1>🏠 ArchVR Gezinti</h1>
+    <p class="sub">Mimari modelleri sanal gerçeklikte yürüyerek gezin</p>
+    <ul id="project-list"></ul>
+    <label class="file-label">
+      📦 Paket Dosyası Ekle (.archvr.glb)
+      <input type="file" id="file-picker" accept=".glb" />
+    </label>
+    <p id="status">Yükleniyor…</p>
+    <p><span id="loaded-name"></span></p>
+    <button id="enter-vr" class="primary" disabled>🥽 VR'a Gir</button>
+    <p id="version">ArchVR Gezinti 0.1.0</p>
+  </div>
+</body>
+</html>

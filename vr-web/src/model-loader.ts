@@ -16,7 +16,7 @@ export interface LoadedPackage {
 }
 
 /** Pişmiş paket: Standard materyalleri unlit'e çevir (map'i koruyarak) */
-function convertToUnlit(root: THREE.Group): void {
+function convertToUnlit(root: THREE.Group, nightBaked: boolean): void {
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -28,6 +28,12 @@ function convertToUnlit(root: THREE.Group): void {
         color: standard.map !== null ? 0xffffff : (standard.color ?? new THREE.Color(0xffffff)),
       });
       basic.name = material.name;
+      // Gece lightmap seti emissive dokusunda taşınır: iki dokuyu da sakla,
+      // gündüz↔gece geçişi map'i takas eder (bkz. App.setNightMode)
+      if (nightBaked && standard.emissiveMap !== null && standard.map !== null) {
+        basic.userData.dayMap = standard.map;
+        basic.userData.nightMap = standard.emissiveMap;
+      }
       // Görünürlük bayraklarını KORU: mimari modellerde ince duvar/çatı gibi
       // yüzeyler çift taraflıdır; bunu düşürmek "kaybolan yapı" hatası yaratır.
       basic.side = standard.side;
@@ -57,7 +63,9 @@ export async function loadArchvrPackageFromBuffer(buffer: ArrayBuffer): Promise<
   loader.setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.parseAsync(buffer, "");
 
-  if (metadata?.lighting === "baked") convertToUnlit(gltf.scene);
+  if (metadata?.lighting === "baked") {
+    convertToUnlit(gltf.scene, metadata.nightBaked === true);
+  }
   return { scene: gltf.scene, metadata };
 }
 

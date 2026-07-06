@@ -13,6 +13,7 @@ export {
   type ArchvrMetadata,
   type SpawnPoint,
   type PackageStats,
+  type InfoLabel,
   type ValidationResult,
 } from "./format.js";
 

@@ -8,10 +8,15 @@ import { Locomotion } from "./locomotion.js";
 import { ComfortVignette } from "./vignette.js";
 import { DesktopControls } from "./desktop-controls.js";
 import { loadArchvrPackage, loadArchvrPackageFromBuffer } from "./model-loader.js";
+import { createLabelSprite, LABEL_HEIGHT_M } from "./label-sprite.js";
 import type { ArchvrMetadata } from "@archvr/shared";
 
 /** Arka plan rengi (gökyüzü yerine nötr açık ton) */
 const CLEAR_COLOR = 0xdfe8f0;
+/** Gece modunda arka plan (koyu gece göğü) */
+const NIGHT_CLEAR_COLOR = 0x0a0e18;
+/** Gündüz/gece geçiş düğmesi: xr-standard eşlemede B/Y (üst düğme) */
+const NIGHT_TOGGLE_BUTTON_INDEX = 5;
 /** Hemisphere ışık şiddeti — sahnedeki TEK ışık (gerçek zamanlı gölge yok) */
 const LIGHT_INTENSITY = 3.0;
 /** Kamera yakın/uzak kırpma düzlemleri (m) */
@@ -40,6 +45,12 @@ export class App {
 
   private metadata: ArchvrMetadata | null = null;
   private currentModel: THREE.Group | null = null;
+  /** Bilgi etiketleri (oda adı/m²) — metadata.labels'tan kurulur */
+  private readonly labelsGroup = new THREE.Group();
+  /** Gece modu açık mı (yalnız nightBaked paketlerde kullanılabilir) */
+  private nightMode = false;
+  /** Kontrolcü düğmesi debounce: basılıyken tek geçiş */
+  private nightButtonHeld = false;
   private readonly ambientLight: THREE.HemisphereLight;
   private readonly headPosition = new THREE.Vector3();
 
@@ -68,6 +79,7 @@ export class App {
     // Pişmiş (baked) paketlerde bu da kapatılır: ışık dokuların içindedir.
     this.ambientLight = new THREE.HemisphereLight(0xffffff, 0x777466, LIGHT_INTENSITY);
     this.scene.add(this.ambientLight);
+    this.scene.add(this.labelsGroup);
 
     this.locomotion = new Locomotion(this.player, this.camera, this.collision);
     this.vignette = new ComfortVignette(this.camera);
@@ -79,6 +91,10 @@ export class App {
     );
 
     window.addEventListener("resize", () => this.onResize());
+    // Masaüstü testte gündüz/gece: N tuşu
+    window.addEventListener("keydown", (event) => {
+      if (event.key.toLowerCase() === "n") this.toggleNight();
+    });
 
     // VR oturumu girip çıkarken masaüstü kontrollerini aç/kapat
     this.renderer.xr.addEventListener("sessionstart", () => {
@@ -117,9 +133,66 @@ export class App {
     });
     this.collision.setColliders(colliders);
 
+    // Bilgi etiketleri: eskileri temizle, metadata'dakileri kur
+    for (const child of this.labelsGroup.children) {
+      const sprite = child as THREE.Sprite;
+      sprite.material.map?.dispose();
+      sprite.material.dispose();
+    }
+    this.labelsGroup.clear();
+    for (const label of metadata?.labels ?? []) {
+      const sprite = createLabelSprite(label.text, label.subtext);
+      sprite.position.set(
+        label.position[0],
+        label.position[1] + LABEL_HEIGHT_M,
+        label.position[2]
+      );
+      this.labelsGroup.add(sprite);
+    }
+
     this.metadata = metadata;
+    this.nightMode = false;
+    this.renderer.setClearColor(CLEAR_COLOR);
     this.applySpawn();
     return metadata;
+  }
+
+  /** Bu pakette gece lightmap seti var mı? */
+  get nightAvailable(): boolean {
+    return this.metadata?.nightBaked === true;
+  }
+
+  /** Gündüz ↔ gece geçişi: pişmiş dokular takas edilir (VR'da B/Y, masaüstünde N) */
+  toggleNight(): void {
+    if (!this.nightAvailable || this.currentModel === null) return;
+    this.nightMode = !this.nightMode;
+    this.renderer.setClearColor(this.nightMode ? NIGHT_CLEAR_COLOR : CLEAR_COLOR);
+    this.currentModel.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        const basic = material as THREE.MeshBasicMaterial;
+        const dayMap = basic.userData.dayMap as THREE.Texture | undefined;
+        const nightMap = basic.userData.nightMap as THREE.Texture | undefined;
+        if (dayMap !== undefined && nightMap !== undefined) {
+          basic.map = this.nightMode ? nightMap : dayMap;
+          basic.needsUpdate = true;
+        }
+      }
+    });
+  }
+
+  /** Kontrolcülerde B/Y düğmesini yokla (basılı tutmada tek geçiş) */
+  private pollNightToggle(session: XRSession | null): void {
+    if (session === null || !this.nightAvailable) return;
+    let pressed = false;
+    for (const source of session.inputSources) {
+      const button = source.gamepad?.buttons[NIGHT_TOGGLE_BUTTON_INDEX];
+      if (button?.pressed === true) pressed = true;
+    }
+    if (pressed && !this.nightButtonHeld) this.toggleNight();
+    this.nightButtonHeld = pressed;
   }
 
   /** Rig'i metadata'daki başlangıç noktasına taşı (metadata yoksa orijin) */
@@ -142,6 +215,7 @@ export class App {
 
       this.locomotion.update(session, deltaTime);
       this.desktopControls.update(deltaTime);
+      this.pollNightToggle(session);
       this.updateGroundFollow(deltaTime);
       this.vignette.update(this.locomotion.currentSpeedRatio, deltaTime);
 

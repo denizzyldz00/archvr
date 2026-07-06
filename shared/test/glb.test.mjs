@@ -88,3 +88,39 @@ test("validateMetadata: gelecekteki major sürüm reddedilir, minor kabul edilir
 test("createMetadata güncel format sürümünü basar", () => {
   assert.equal(sampleMetadata().formatVersion, ARCHVR_FORMAT_VERSION);
 });
+
+test("etiketli + gece bayraklı metadata gidiş-dönüş ve doğrulama", () => {
+  const meta = createMetadata({
+    projectName: "Etiketli Daire",
+    generator: "ArchVR Desktop 0.2.0",
+    spawn: { position: [0, 0, 0], yawDegrees: 0 },
+    labels: [
+      { position: [1, 0, -2], text: "Salon", subtext: "23 m²" },
+      { position: [4, 0, -2], text: "Mutfak" },
+    ],
+    nightBaked: true,
+  });
+  assert.equal(validateMetadata(meta).valid, true);
+
+  const glb = buildGlb({ asset: { version: "2.0" } }, null);
+  const readBack = readArchvrMetadata(writeArchvrMetadata(glb, meta));
+  assert.deepEqual(readBack.labels, meta.labels);
+  assert.equal(readBack.nightBaked, true);
+});
+
+test("bozuk etiket doğrulamadan geçmez", () => {
+  const meta = createMetadata({
+    projectName: "Bozuk",
+    generator: "test",
+    spawn: { position: [0, 0, 0], yawDegrees: 0 },
+  });
+  // position eksik → geçersiz
+  const bad = { ...meta, labels: [{ text: "Salon" }] };
+  const result = validateMetadata(bad);
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("Etiket #1")));
+  // labels dizi değil → geçersiz
+  assert.equal(validateMetadata({ ...meta, labels: "salon" }).valid, false);
+  // nightBaked boolean değil → geçersiz
+  assert.equal(validateMetadata({ ...meta, nightBaked: "evet" }).valid, false);
+});

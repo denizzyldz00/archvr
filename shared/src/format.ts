@@ -41,6 +41,16 @@ export interface PackageStats {
   textureBytes?: number;
 }
 
+/** VR'da havada asılı gösterilen bilgi etiketi (oda adı + opsiyonel alt satır) */
+export interface InfoLabel {
+  /** Etiketin zemindeki noktası [x, y, z] (metre) — görüntüleyici göz hizasına kaldırır */
+  position: [number, number, number];
+  /** Ana metin, ör. "Salon" */
+  text: string;
+  /** Alt satır, ör. "23 m²" — opsiyonel */
+  subtext?: string;
+}
+
 /** .archvr.glb içine gömülen metadata'nın tamamı */
 export interface ArchvrMetadata {
   /** Format sürümü, ör. "1.0" — zorunlu */
@@ -61,6 +71,15 @@ export interface ArchvrMetadata {
    * "unbaked" / yok = görüntüleyici basit ortam ışığı ekler
    */
   lighting?: "baked" | "unbaked";
+  /** Bilgi etiketleri (oda adı/m²) — opsiyonel (v1.0'a geriye uyumlu ekleme) */
+  labels?: InfoLabel[];
+  /**
+   * Gece lightmap seti var mı — opsiyonel (v1.0'a geriye uyumlu ekleme).
+   * true ise her materyalin emissive dokusu GECE pişirmesini taşır
+   * (emissive normal görüntülemede kapalıdır); görüntüleyici gündüz↔gece
+   * geçişinde base color ↔ emissive dokularını takas eder.
+   */
+  nightBaked?: boolean;
 }
 
 /** Doğrulama sonucu: geçerliyse errors boş döner */
@@ -134,6 +153,27 @@ export function validateMetadata(value: unknown): ValidationResult {
     }
   }
 
+  // Opsiyonel etiketler: varsa biçimleri doğru olmalı (bozuk etiket VR'da çökme yaratmasın)
+  if (meta.labels !== undefined) {
+    if (!Array.isArray(meta.labels)) {
+      errors.push("Etiket listesi (labels) bir dizi olmalı.");
+    } else {
+      for (const [index, label] of meta.labels.entries()) {
+        const item = label as Record<string, unknown>;
+        if (typeof item !== "object" || item === null || !isVector3(item.position) ||
+            typeof item.text !== "string" || item.text.trim().length === 0) {
+          errors.push(`Etiket #${index + 1} bozuk: position [x,y,z] ve boş olmayan text zorunlu.`);
+        } else if (item.subtext !== undefined && typeof item.subtext !== "string") {
+          errors.push(`Etiket #${index + 1} bozuk: subtext bir metin olmalı.`);
+        }
+      }
+    }
+  }
+
+  if (meta.nightBaked !== undefined && typeof meta.nightBaked !== "boolean") {
+    errors.push("nightBaked alanı true/false olmalı.");
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -147,6 +187,8 @@ export function createMetadata(input: {
   spawn: SpawnPoint;
   stats?: PackageStats;
   lighting?: "baked" | "unbaked";
+  labels?: InfoLabel[];
+  nightBaked?: boolean;
 }): ArchvrMetadata {
   return {
     formatVersion: ARCHVR_FORMAT_VERSION,
@@ -156,5 +198,7 @@ export function createMetadata(input: {
     spawn: input.spawn,
     ...(input.stats !== undefined ? { stats: input.stats } : {}),
     ...(input.lighting !== undefined ? { lighting: input.lighting } : {}),
+    ...(input.labels !== undefined && input.labels.length > 0 ? { labels: input.labels } : {}),
+    ...(input.nightBaked !== undefined ? { nightBaked: input.nightBaked } : {}),
   };
 }

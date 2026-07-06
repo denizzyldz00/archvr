@@ -1,0 +1,22 @@
+{
+  "name": "@archvr/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ArchVR ortak kodları: .archvr.glb paket formatı tanımı ve GLB metadata yardımcıları",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/glb.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

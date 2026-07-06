@@ -1,0 +1,31 @@
+# Bağımlılıklar
+node_modules/
+
+# Derleme çıktıları
+dist/
+dist-electron/
+out/
+release/
+*.tsbuildinfo
+
+# Claude Code yerel ayarları
+.claude/
+
+# Electron-builder çıktıları
+desktop/build-output/
+
+# Geçici / işletim sistemi dosyaları
+.DS_Store
+Thumbs.db
+*.log
+
+# Telefondan atılan hata ayıklama görüntüleri (repo'ya girmesin)
+WhatsApp Image*.jpeg
+WhatsApp Image*.jpg
+
+# Ortam dosyaları
+.env
+.env.local
+
+# Desktop uygulaması AYRI ÖZEL repodadır (desktop/.git) — public repoya girmez
+/desktop/

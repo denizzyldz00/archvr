@@ -7,10 +7,12 @@
  *
  * Bu modül İKİNCİL hareketi yönetir — fiziksel alan bitince:
  * - Sol joystick: yavaş kayarak ilerleme (maks yürüme hızı), kafa yönüne göre
- * - Sağ joystick: 30° anlık dönüş (snap turn) — konfor için yumuşak dönüş YOK
+ * - Sağ joystick: sürekli dönüş (smooth turn) — çubuk ne kadar yatarsa o kadar
+ *   hızlı döner. Sürekli dönüş vection (bkz. vignette.ts) riski taşıdığından
+ *   dönüş sırasında konfor vinyeti de devreye girer.
  *
  * Kısa kavram: "Rig/player" tekniği — kamerayı bir Group içine koyarız.
- * WebXR kamerayı odadaki gerçek konuma göre oynatır; joystick/snap turn ise
+ * WebXR kamerayı odadaki gerçek konuma göre oynatır; joystick/dönüş ise
  * bu Group'u (sanal dünyadaki "oda kaydırması") hareket ettirir. İkisi toplanır.
  */
 import * as THREE from "three";
@@ -18,16 +20,15 @@ import type { CollisionWorld } from "./collision.js";
 
 /** Maksimum joystick hızı (m/s) — normal yürüme temposu, konfor sınırı */
 const MAX_SPEED = 1.4;
-/** Snap turn açısı (derece) — saha testi geri bildirimiyle hafifletildi (30 → 10) */
-const SNAP_ANGLE_DEG = 10;
-/** Çubuk yana basılı tutulursa bu aralıkla dönmeye devam et (sn) */
-const SNAP_REPEAT_SECONDS = 0.2;
+/** Sürekli dönüşte TAM sapmadaki açısal hız (derece/sn) — konfor üst sınırı */
+const MAX_TURN_SPEED_DEG = 90;
+/**
+ * Dönüş tepki eğrisi üssü: sapma bu üsle hıza çevrilir (2 = kare).
+ * Merkez yakınında hassas ince ayar, uçta hızlı dönüş sağlar; 1 = doğrusal.
+ */
+const TURN_RESPONSE_EXPONENT = 2;
 /** Joystick ölü bölgesi: bunun altındaki sapmalar yok sayılır (sürüklenmeyi önler) */
 const STICK_DEADZONE = 0.15;
-/** Snap turn tetikleme eşiği */
-const SNAP_TRIGGER = 0.7;
-/** Snap turn'ün yeniden kurulması için çubuğun altına inmesi gereken değer */
-const SNAP_RESET = 0.4;
 /** xr-standard gamepad eşlemesinde thumbstick eksen indeksleri */
 const THUMBSTICK_AXIS_X = 2;
 const THUMBSTICK_AXIS_Y = 3;
@@ -37,11 +38,10 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class Locomotion {
   /** Joystick ile kayma açık mı? (ayarlar menüsünden kapatılabilir — v1'de hep açık) */
   smoothMoveEnabled = true;
-  /** Vignette efekti için: anlık hız oranı 0..1 */
+  /** Vignette efekti için: anlık kayma hızı oranı 0..1 */
   currentSpeedRatio = 0;
-
-  private snapReady = true;
-  private snapRepeatTimer = 0;
+  /** Vignette efekti için: anlık dönüş hızı oranı 0..1 */
+  currentTurnRatio = 0;
 
   // Geçici vektörler (her karede ayırma yapmamak için)
   private readonly forward = new THREE.Vector3();
@@ -61,6 +61,7 @@ export class Locomotion {
   /** Her karede XR oturumundaki kontrolcü girdilerini işle */
   update(session: XRSession | null, deltaTime: number): void {
     this.currentSpeedRatio = 0;
+    this.currentTurnRatio = 0;
     if (session === null) return;
 
     for (const source of session.inputSources) {
@@ -70,7 +71,7 @@ export class Locomotion {
       if (source.handedness === "left") {
         this.handleSmoothMove(gamepad, deltaTime);
       } else if (source.handedness === "right") {
-        this.handleSnapTurn(gamepad, deltaTime);
+        this.handleSmoothTurn(gamepad, deltaTime);
       }
     }
   }
@@ -115,32 +116,25 @@ export class Locomotion {
   }
 
   /**
-   * Sağ çubuk: hafif kademeli dönüş (10°), kafa konumu sabit.
-   * Çubuk basılı tutulursa kısa aralıklarla dönmeye devam eder —
-   * küçük açı + tekrar, tek büyük sıçramadan daha konforlu.
+   * Sağ çubuk: sapmayla orantılı sürekli dönüş, kafa konumu sabit pivot.
+   * Hafif itiş = yavaş ince ayar, tam itiş = MAX_TURN_SPEED_DEG/sn.
    */
-  private handleSnapTurn(gamepad: Gamepad, deltaTime: number): void {
+  private handleSmoothTurn(gamepad: Gamepad, deltaTime: number): void {
     const stickX = gamepad.axes[THUMBSTICK_AXIS_X];
+    const magnitude = Math.abs(stickX);
+    if (magnitude < STICK_DEADZONE) return;
 
-    if (Math.abs(stickX) < SNAP_RESET) {
-      this.snapReady = true;
-      this.snapRepeatTimer = 0;
-      return;
-    }
-    if (Math.abs(stickX) < SNAP_TRIGGER) return;
-
-    if (this.snapReady) {
-      this.snapReady = false;
-      this.snapRepeatTimer = 0;
-    } else {
-      // Basılı tutma: tekrar süresi dolana dek bekle
-      this.snapRepeatTimer += deltaTime;
-      if (this.snapRepeatTimer < SNAP_REPEAT_SECONDS) return;
-      this.snapRepeatTimer = 0;
-    }
+    // Ölü bölge sonrasını 0..1'e normalle, tepki eğrisinden geçir
+    const normalized =
+      (Math.min(magnitude, 1) - STICK_DEADZONE) / (1 - STICK_DEADZONE);
+    const speedRatio = Math.pow(normalized, TURN_RESPONSE_EXPONENT);
 
     // Sağa itince saat yönünde (negatif Y dönüşü)
-    const angle = -Math.sign(stickX) * THREE.MathUtils.degToRad(SNAP_ANGLE_DEG);
+    const angle =
+      -Math.sign(stickX) *
+      speedRatio *
+      THREE.MathUtils.degToRad(MAX_TURN_SPEED_DEG) *
+      deltaTime;
 
     // Rig'i kendi ekseninde döndürünce kafa yer değiştirir;
     // dönüş öncesi/sonrası kafa konum farkını geri ekleyerek kafayı sabit tutarız
@@ -149,5 +143,7 @@ export class Locomotion {
     this.player.updateMatrixWorld(true);
     this.camera.getWorldPosition(this.headAfter);
     this.player.position.add(this.headBefore.sub(this.headAfter));
+
+    this.currentTurnRatio = speedRatio;
   }
 }

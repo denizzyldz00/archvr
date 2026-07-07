@@ -44,7 +44,7 @@ export class DesktopControls {
 
     document.addEventListener("mousemove", (event) => {
       if (!this.enabled || document.pointerLockElement !== canvas) return;
-      // Sağa-sola bakış rig'i döndürür (VR'daki snap turn'ün karşılığı),
+      // Sağa-sola bakış rig'i döndürür (VR'daki joystick dönüşünün karşılığı),
       // yukarı-aşağı bakış yalnızca kamerayı eğer
       this.player.rotation.y -= event.movementX * MOUSE_SENSITIVITY;
       this.pitch = THREE.MathUtils.clamp(

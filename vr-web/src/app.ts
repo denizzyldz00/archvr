@@ -51,7 +51,7 @@ export class App {
   readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
-  /** Rig: joystick/snap turn bunu oynatır, WebXR kamerayı bunun içinde oynatır */
+  /** Rig: joystick kayma/dönüş bunu oynatır, WebXR kamerayı bunun içinde oynatır */
   private readonly player = new THREE.Group();
   private readonly clock = new THREE.Clock();
 
@@ -249,7 +249,11 @@ export class App {
       this.desktopControls.update(deltaTime);
       this.pollNightToggle(session);
       this.updateGroundFollow(deltaTime);
-      this.vignette.update(this.locomotion.currentSpeedRatio, deltaTime);
+      // Vinyet hem kaymada hem sürekli dönüşte devrede (dönüş daha çok bulandırır)
+      this.vignette.update(
+        Math.max(this.locomotion.currentSpeedRatio, this.locomotion.currentTurnRatio),
+        deltaTime
+      );
 
       this.renderer.render(this.scene, this.camera);
     });

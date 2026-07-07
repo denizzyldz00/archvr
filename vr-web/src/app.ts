@@ -19,6 +19,23 @@ const NIGHT_CLEAR_COLOR = 0x0a0e18;
 const NIGHT_TOGGLE_BUTTON_INDEX = 5;
 /** Hemisphere ışık şiddeti — sahnedeki TEK ışık (gerçek zamanlı gölge yok) */
 const LIGHT_INTENSITY = 3.0;
+/**
+ * VR framebuffer ölçeği: 1.0 = gözlüğün önerdiği çözünürlük. 1.2 belirgin
+ * keskinlik kazandırır; unlit (pişmiş) sahnelerde Quest 3'te karşılanabilir.
+ * Saha testinde takılma görülürse önce bunu 1.0'a indir.
+ */
+const XR_FRAMEBUFFER_SCALE = 1.2;
+/**
+ * Sabit foveation (0-1): 1 = kenarlar en bulanık ama en hızlı (three varsayılanı).
+ * 0.7, görüş alanı kenarlarındaki bulanıklığı azaltır; maliyeti düşüktür.
+ */
+const XR_FOVEATION = 0.7;
+/**
+ * Pişmiş dokularda anizotropik filtreleme: zemine/duvara eğik bakışta dokunun
+ * bulanıklaşmasını giderir (lightmap'li mimari sahnede en görünür netlik kazancı).
+ * 4, Quest GPU'sunda güvenli; masaüstünde de yeterli.
+ */
+const TEXTURE_ANISOTROPY = 4;
 /** Kamera yakın/uzak kırpma düzlemleri (m) */
 const CAMERA_NEAR = 0.1;
 const CAMERA_FAR = 200;
@@ -63,6 +80,9 @@ export class App {
     // gerçek boyu ve odadaki gerçek konumu doğrudan kameraya işlenir
     this.renderer.xr.enabled = true;
     this.renderer.xr.setReferenceSpaceType("local-floor");
+    // Keskinlik ayarları: oturum başlamadan önce verilmelidir
+    this.renderer.xr.setFramebufferScaleFactor(XR_FRAMEBUFFER_SCALE);
+    this.renderer.xr.setFoveation(XR_FOVEATION);
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(
@@ -126,10 +146,22 @@ export class App {
     // Pişmiş paketlerde sahne ışığı kapalı: unlit materyaller zaten aydınlık
     this.ambientLight.visible = metadata?.lighting !== "baked";
 
-    // Modelin tüm mesh'leri çarpışma listesine girer
+    // Modelin tüm mesh'leri çarpışma listesine girer; dokulara da
+    // anizotropik filtreleme uygulanır (eğik bakışta netlik)
     const colliders: THREE.Object3D[] = [];
     model.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) colliders.push(child);
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      colliders.push(mesh);
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        const basic = material as THREE.MeshBasicMaterial;
+        if (basic.map !== null && basic.map !== undefined) {
+          basic.map.anisotropy = TEXTURE_ANISOTROPY;
+        }
+        const nightMap = basic.userData.nightMap as THREE.Texture | undefined;
+        if (nightMap !== undefined) nightMap.anisotropy = TEXTURE_ANISOTROPY;
+      }
     });
     this.collision.setColliders(colliders);
 
